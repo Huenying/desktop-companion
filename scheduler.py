@@ -339,9 +339,15 @@ class ReminderScheduler:
                 # Fire!
                 self._fired_today.add(key)
 
-                # Play notification sound (two short beeps)
+                # Play notification sound (Tomato Clock chime: C5 + E5)
                 try:
-                    winsound.Beep(880, 200)  # 880 Hz, 200 ms
+                    import threading
+                    def _play_chime():
+                        # C5 (523.25 Hz) then E5 (659.25 Hz) — major third
+                        winsound.Beep(523, 200)  # C5, 200ms
+                        import time; time.sleep(0.1)
+                        winsound.Beep(659, 200)  # E5, 200ms
+                    threading.Thread(target=_play_chime, daemon=True).start()
                 except:
                     pass
 
