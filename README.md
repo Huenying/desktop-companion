@@ -13,6 +13,9 @@ An always-on-top desktop companion character that shows caring messages in Tradi
 - **Auto-dismiss on leave** — move away → bubble disappears / 滑鼠移開對話框立刻消失
 - **Drag & drop** — click and drag to reposition anywhere / 滑鼠按住即可拖曳到任何位置
 - **Warm orange bubble** — light peach-orange bubble with sweet rounded design 🧡
+- **⏰ Scheduled reminders** — right-click → **⚙️ Settings** to add reminders that chime and show a message at set times
+- **C5+G5 chime** — two-tone notification sound (same style as Tomato Clock) 🎵
+- **Daily / Weekdays / Weekends / Custom repeat** — flexible reminder scheduling
 - **Auto-start** — launches when you log into Windows / 開機自動啟動
 
 ## 🚀 Quick Start
@@ -46,6 +49,7 @@ Double-click **`setup_autostart.bat`** — it installs dependencies, creates a s
 | `character.png` | Extracted character sprite (with transparency) |
 | `confirmed.jpeg` | Original character image (dark background) |
 | `config.py` | Messages and display settings |
+| `scheduler.py` | Reminder scheduler with settings dialog & C5+G5 chime |
 | `extract_character.py` | Extracts character from JPEG → transparent PNG |
 | `run.bat` | Double-click to launch (no console window) |
 | `setup_autostart.bat` | One-time setup → install + auto-start |

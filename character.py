@@ -17,6 +17,7 @@ from PyQt5.QtGui import QPainter, QPixmap, QColor, QFont, QFontMetrics, \
     QPainterPath, QPen
 
 from config import MESSAGES, DISPLAY, WINDOW
+from scheduler import SettingsDialog, ReminderScheduler
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -107,6 +108,12 @@ class CharacterWidget(QWidget):
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self._hide_bubble)
 
+        # ── Reminder scheduler ──────────────────────────────────────────
+        self.scheduler = ReminderScheduler(
+            show_bubble_callback=self._show_bubble,
+            parent=self,
+        )
+
         # ── Right-click menu ────────────────────────────────────────────
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
@@ -166,6 +173,10 @@ class CharacterWidget(QWidget):
     def _context_menu(self, pos):
         menu = QMenu()
 
+        settings_act = menu.addAction("⚙️ Settings")
+        settings_act.triggered.connect(self._open_settings)
+        menu.addSeparator()
+
         show_act = menu.addAction(
             "Hide Message" if self.bubble_visible else "Show Message"
         )
@@ -185,6 +196,11 @@ class CharacterWidget(QWidget):
             self._hide_bubble()
         else:
             self._show_random_message()
+
+    def _open_settings(self):
+        """Open the reminder settings dialog."""
+        dlg = SettingsDialog(parent=self)
+        dlg.exec_()
 
     # ── Painting ───────────────────────────────────────────────────────────
 
