@@ -9,8 +9,10 @@ An always-on-top desktop companion character that shows caring messages in Tradi
 ## ✨ Features
 
 - **Always on top** — visible above all windows / 永遠在最上層顯示
+- **Gentle idle sway** — character gently wobbles ±2.5° when idle, making it feel alive 🌀
 - **Hover for messages** — move your mouse over → warm orange bubble pops up to the left / 滑鼠移過去就會跳出暖心對話框
 - **Auto-dismiss on leave** — move away → bubble disappears / 滑鼠移開對話框立刻消失
+- **Smart bubble flip** — bubble appears on the left of character by default, flips to the right when you drag to the left half of the screen
 - **Drag & drop** — click and drag to reposition anywhere / 滑鼠按住即可拖曳到任何位置
 - **Warm orange bubble** — light peach-orange bubble with sweet rounded design 🧡
 - **⏰ Scheduled reminders** — right-click → **⚙️ Settings** to add reminders that chime and show a message at set times

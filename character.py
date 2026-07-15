@@ -11,6 +11,8 @@ Requirements: PyQt5
 
 import sys
 import random
+import math
+import time
 from PyQt5.QtWidgets import QApplication, QWidget, QMenu
 from PyQt5.QtCore import Qt, QTimer, QRect, QRectF, QPoint
 from PyQt5.QtGui import QPainter, QPixmap, QColor, QFont, QFontMetrics, \
@@ -83,17 +85,20 @@ class CharacterWidget(QWidget):
         self.win_h = max(self.char_display_h, est_bubble_h) + self.pad * 2
         self.setFixedSize(self.win_w, self.win_h)
 
-        # Character position (right side, vertically centered)
-        self.char_x = self.win_w - self.pad - self.char_display_w
+        # Character position — computed dynamically in paintEvent based on bubble side
         self.char_y = (self.win_h - self.char_display_h) // 2
-        self.char_rect = QRect(self.char_x, self.char_y,
-                               self.char_display_w, self.char_display_h)
 
         # ── State ───────────────────────────────────────────────────────
         self.current_message = ""
         self.bubble_visible = False
+        self.bubble_on_left = True    # which side of character the bubble appears
         self.dragging = False
         self.drag_offset = QPoint()
+        self.suppress_hover = False   # suppress hover message during/after drag
+        # Idle sway animation
+        self.idle_animating = True
+        self.idle_angle = 0.0
+        self.idle_start_time = time.time()
 
         # ── Window flags ────────────────────────────────────────────────
         flags = Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
@@ -107,6 +112,15 @@ class CharacterWidget(QWidget):
         self.hide_timer = QTimer(self)
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self._hide_bubble)
+
+        self.drag_suppress_timer = QTimer(self)
+        self.drag_suppress_timer.setSingleShot(True)
+        self.drag_suppress_timer.timeout.connect(self._enable_hover)
+
+        # ── Idle sway animation (subtle rotation) ──────────────────────
+        self.idle_timer = QTimer(self)
+        self.idle_timer.timeout.connect(self._tick_idle)
+        self.idle_timer.start(40)  # ~25 fps
 
         # ── Reminder scheduler ──────────────────────────────────────────
         self.scheduler = ReminderScheduler(
@@ -125,6 +139,31 @@ class CharacterWidget(QWidget):
         x = screen.right() - self.win_w - WINDOW["margin_right"]
         y = screen.bottom() - self.win_h - WINDOW["margin_bottom"]
         self.move(x, y)
+        self._update_bubble_side()
+
+    def _update_bubble_side(self):
+        """Flip bubble side based on which half of the screen the window is on.
+
+        When the side flips, the character switches between the left and right
+        side of the window (bubble_max_w + gap pixels). To keep the character
+        at the same screen position, shift the window the opposite way.
+        """
+        screen = QApplication.primaryScreen().availableGeometry()
+        win_center_x = self.x() + self.win_w // 2
+        screen_center_x = screen.left() + screen.width() // 2
+        should_be_left = win_center_x >= screen_center_x
+
+        if should_be_left != self.bubble_on_left:
+            offset = self.bubble_max_w + self.gap
+            if should_be_left:
+                # Was right-side (char left) → going left-side (char right)
+                # Character jumps RIGHT by offset → shift window LEFT
+                self.move(self.x() - offset, self.y())
+            else:
+                # Was left-side (char right) → going right-side (char left)
+                # Character jumps LEFT by offset → shift window RIGHT
+                self.move(self.x() + offset, self.y())
+            self.bubble_on_left = should_be_left
 
     # ── Bubble control ─────────────────────────────────────────────────────
 
@@ -143,10 +182,26 @@ class CharacterWidget(QWidget):
         msg = random.choice(choices) if choices else random.choice(MESSAGES)
         self._show_bubble(msg)
 
+    def _enable_hover(self):
+        self.suppress_hover = False
+
+    # ── Idle sway animation ─────────────────────────────────────────────────
+
+    def _tick_idle(self):
+        """Update the idle rotation angle — gentle ±1.5° sway at ~0.5 Hz."""
+        if self.idle_animating and not self.dragging and not self.underMouse():
+            elapsed = time.time() - self.idle_start_time
+            self.idle_angle = math.sin(elapsed * 5.0) * 2.5
+            self.update()
+        elif self.idle_angle != 0.0:
+            self.idle_angle = 0.0
+            self.update()
+
     # ── Hover → bubble ─────────────────────────────────────────────────────
 
     def enterEvent(self, event):
-        self._show_random_message()
+        if not self.dragging and not self.suppress_hover:
+            self._show_random_message()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -158,15 +213,23 @@ class CharacterWidget(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.dragging = True
+            self.suppress_hover = True
+            self.drag_suppress_timer.stop()
             self.drag_offset = event.pos()
+            self._hide_bubble()          # hide message when starting to drag
 
     def mouseMoveEvent(self, event):
         if self.dragging:
             self.move(self.mapToGlobal(event.pos() - self.drag_offset))
+            self.update()
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.LeftButton and self.dragging:
             self.dragging = False
+            self._hide_bubble()
+            self._update_bubble_side()
+            self.update()
+            self.drag_suppress_timer.start(500)  # 500ms: re-enable hover messages
 
     # ── Context menu ───────────────────────────────────────────────────────
 
@@ -209,10 +272,30 @@ class CharacterWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
 
-        # ── Character (paint first so bubble paints on top if overlapping) ─
-        painter.drawPixmap(self.char_rect, self.char_scaled)
+        # ── Character — dynamically positioned based on bubble side ────
+        if self.bubble_on_left:
+            char_x = self.win_w - self.pad - self.char_display_w
+        else:
+            char_x = self.pad
+        char_rect = QRect(char_x, self.char_y,
+                          self.char_display_w, self.char_display_h)
 
-        # ── Bubble (to the left of the character) ──────────────────────────
+        # ── Character (with idle sway rotation) ──────────────────────────
+        if self.idle_animating and abs(self.idle_angle) > 0.05:
+            # Rotate the coordinate system around center — no pixmap resize
+            cx = char_rect.center().x()
+            cy = char_rect.center().y()
+            painter.save()
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
+            painter.translate(cx, cy)
+            painter.rotate(self.idle_angle)
+            painter.translate(-cx, -cy)
+            painter.drawPixmap(char_rect, self.char_scaled)
+            painter.restore()
+        else:
+            painter.drawPixmap(char_rect, self.char_scaled)
+
+        # ── Bubble ─────────────────────────────────────────────────────
         if self.bubble_visible and self.current_message:
             # Font — sweet & readable for Chinese
             font = QFont("Microsoft JhengHei", 12, QFont.Bold)
@@ -255,8 +338,12 @@ class CharacterWidget(QWidget):
                 max(line_widths) + self.bubble_pad * 2 + 24,
             )
 
-            # Position bubble to the LEFT of the character
-            bx = self.char_x - self.gap - bubble_w
+            # Position bubble — LEFT or RIGHT of character depending on screen side
+            if self.bubble_on_left:
+                bx = char_x - self.gap - bubble_w
+            else:
+                bx = char_x + self.char_display_w + self.gap
+
             # Vertically center bubble relative to character
             by = self.char_y + (self.char_display_h - total_h) // 2
             # Clamp so it doesn't go off-screen top/bottom
@@ -282,14 +369,21 @@ class CharacterWidget(QWidget):
             painter.setPen(QPen(self.bubble_border, 1.5))
             painter.drawPath(path)
 
-            # ── Tail (pointing RIGHT toward character) ──
-            # Tail triangle emerges from the right edge of the bubble
+            # ── Tail (pointing toward character) ──
             ty = body_rect.center().y()
-            tx = body_rect.right()
             tail = QPainterPath()
-            tail.moveTo(tx, ty - self.bubble_tail_h)
-            tail.lineTo(tx + self.bubble_tail_w, ty)
-            tail.lineTo(tx, ty + self.bubble_tail_h)
+            if self.bubble_on_left:
+                # Tail points RIGHT — from bubble right edge toward character
+                tx = body_rect.right()
+                tail.moveTo(tx, ty - self.bubble_tail_h)
+                tail.lineTo(tx + self.bubble_tail_w, ty)
+                tail.lineTo(tx, ty + self.bubble_tail_h)
+            else:
+                # Tail points LEFT — from bubble left edge toward character
+                tx = body_rect.left()
+                tail.moveTo(tx, ty - self.bubble_tail_h)
+                tail.lineTo(tx - self.bubble_tail_w, ty)
+                tail.lineTo(tx, ty + self.bubble_tail_h)
             tail.closeSubpath()
             painter.fillPath(tail, self.bubble_bg)
             painter.setPen(QPen(self.bubble_border, 1.5))
